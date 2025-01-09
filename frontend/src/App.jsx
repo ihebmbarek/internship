@@ -7,6 +7,7 @@ import Jobs from "./pages/Jobs";
 import Browse from "./components/Browse";
 import Profile from "./components/Profile";
 import JobDescription from "./components/JobDescription";
+import Companies from "./components/admin/Companies";
 
 
 
@@ -39,6 +40,12 @@ const appRouter = createBrowserRouter([
     path:'/profile',
     element:<Profile/>
   },
+
+  //admin ke liye yaha se start hoga.
+  {
+    path:'/admin/companies',
+    element:<Companies/>
+  }
  
 ])
 
