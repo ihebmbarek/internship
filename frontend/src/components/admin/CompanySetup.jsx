@@ -9,8 +9,12 @@ import { COMPANY_API_END_POINT } from "@/utils/constant";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useSelector } from "react-redux";
+import useGetComapanyById from "@/hooks/useGetCompanyById";
 
 const CompanySetup = () => {
+  const params = useParams();
+  console.log(params);
+  useGetComapanyById(params.id)
   const [input, setInput] = useState({
     name: "",
     description: "",
@@ -19,8 +23,8 @@ const CompanySetup = () => {
     file: null,
   });
   const{singleCompany} = useSelector(store=>store.company);
+  console.log(singleCompany)
   const [loading, setLoading] = useState(false);
-  const params = useParams();
   const navigate = useNavigate();
 
   const changeEventHandler = (e) => {
@@ -30,7 +34,6 @@ const CompanySetup = () => {
   const changeFileHandler = (e) =>{
     const file = e.target.files?.[0];
     setInput({...input, file});
-  
   };
 
   const submitHandler = async (e) =>{
@@ -65,15 +68,16 @@ const CompanySetup = () => {
     }
   }
 
-  useEffect(()=>{
+  useEffect(() => {
     setInput({
-      name: singleCompany.name || "",
-      description: singleCompany.description || "",
-      website: singleCompany.website ||  "",
-      location: singleCompany.location || "",
-      file: null,
+        name: singleCompany.name || "",
+        description: singleCompany.description || "",
+        website: singleCompany.website || "",
+        location: singleCompany.location || "",
+        file: singleCompany.file || null
     })
-  },[])
+},[singleCompany]);
+
 
   return (
     <div>
