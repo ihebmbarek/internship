@@ -1,0 +1,26 @@
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm install --production
+COPY . .
+
+FROM node:18-alpine
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /app
+COPY --from=builder /app .
+
+ENV NODE_ENV=production
+
+RUN chown -R appuser:appgroup /app
+
+USER appuser
+
+EXPOSE 5000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+  CMD wget --spider -q http://localhost:5000/api/health || exit 1
+
+CMD ["node", "index.js"]
