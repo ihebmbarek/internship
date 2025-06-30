@@ -9,16 +9,13 @@ FROM nginx:alpine
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-RUN sed -i 's/listen\s\+80;/listen 8080;/' /etc/nginx/conf.d/default.conf
-
 RUN mkdir -p /var/cache/nginx/client_temp && \
     chown -R appuser:appgroup /var/cache/nginx && \
     chown -R appuser:appgroup /usr/share/nginx/html
 
+COPY nginx.conf /etc/nginx/nginx.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 USER appuser
-
 EXPOSE 8080
-
 CMD ["nginx", "-g", "daemon off;"]
