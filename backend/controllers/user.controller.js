@@ -3,8 +3,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import getDataUri from "../utils/datauri.js";
 import cloudinary from "../utils/cloudinary.js";
-
-
+import getSecret from '../utils/secrets.js';
+/*
 export const register = async (req, res) => {
   try {
     const { fullname, email, phoneNumber, password, role } = req.body;
@@ -44,6 +44,74 @@ export const register = async (req, res) => {
     console.log(error);
   }
 };
+
+*/
+
+
+export const register = async (req, res) => {
+  try {
+    const { fullname, email, phoneNumber, password, role } = req.body;
+
+    if (!fullname || !email || !phoneNumber || !password || !role) {
+      return res.status(400).json({
+        message: "Something is missing",
+        success: false,
+      });
+    }
+
+    const file = req.file;
+    const fileUri = getDataUri(file);
+    const cloudResponse = await cloudinary.uploader.upload(fileUri.content);
+
+    // Check if email or phone number already exists
+    const existingUser = await User.findOne({
+      $or: [{ email }, { phoneNumber }],
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: "User already exists with this email or phone number.",
+        success: false,
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await User.create({
+      fullname,
+      email,
+      phoneNumber,
+      password: hashedPassword,
+      role,
+      profile: {
+        profilePhoto: cloudResponse.secure_url,
+      },
+    });
+
+    return res.status(201).json({
+      message: "Account created successfully.",
+      success: true,
+    });
+  } catch (error) {
+    // Handle MongoDB duplicate key error just in case
+    if (error.code === 11000) {
+      return res.status(400).json({
+        message: `Duplicate field: ${Object.keys(error.keyPattern)[0]}`,
+        success: false,
+      });
+    }
+
+    console.error("Registration error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      success: false,
+    });
+  }
+};
+
+
+
+
 
 export const login = async (req, res) => {
   try {
@@ -87,7 +155,11 @@ export const login = async (req, res) => {
     const tokenData = {
       userId: user._id,
     };
-    const token = await jwt.sign(tokenData, process.env.SECRET_KEY, {
+ // const token = await jwt.sign(tokenData, process.env.SECRET_KEY, {
+ //   expiresIn: "1d",
+ // });
+	  //
+    const token = await jwt.sign(tokenData, getSecret('SECRET_KEY'), {
       expiresIn: "1d",
     });
 
