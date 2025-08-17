@@ -27,11 +27,9 @@ spec:
   }
 
   environment {
-    // Cluster/namespace
     OCP_API_URL   = 'https://api.ocp4.smartek.ae:6443'
-    OCP_NAMESPACE = 'alpha'
+    OCP_NAMESPACE = 'beta'
 
-    // Your exact image names
     FRONTEND_IMAGE = 'quay.io/ihebmbarek/jobportal-frontend:latest'
     BACKEND_IMAGE  = 'quay.io/ihebmbarek/jobportal-backend:latest'
   }
@@ -51,14 +49,14 @@ spec:
       }
     }
 
-    stage('Lint, Install & Build') {
+    stage('Install & Build') {
       parallel {
         stage('Frontend') {
           steps {
             container('nodejs') {
               dir('source/frontend') {
                 sh '''
-                  npm run lint || true
+                  npm install
                   npm run build
                 '''
               }
@@ -69,7 +67,9 @@ spec:
           steps {
             container('nodejs') {
               dir('source/backend') {
-                sh 'npm run lint || true'
+                sh '''
+                  npm install
+                '''
               }
             }
           }
@@ -120,7 +120,6 @@ spec:
               oc login --token="$OCP_TOKEN" --server="$OCP_API_URL" --insecure-skip-tls-verify
               oc project "$OCP_NAMESPACE" || oc new-project "$OCP_NAMESPACE"
 
-              # Create or update deployments from your exact images
               if ! oc get deploy/backend-app >/dev/null 2>&1; then
                 oc new-app $BACKEND_IMAGE --name=backend-app
               else
@@ -140,7 +139,7 @@ spec:
   }
 
   post {
-    success { echo '✅ Built & pushed to Quay, deployed to namespace "beta".' }
-    failure { echo '❌ Pipeline failed. Check logs.' }
+    success { echo ' Built & pushed to Quay, deployed to namespace "beta".' }
+    failure { echo ' Pipeline failed. Check logs.' }
   }
 }
