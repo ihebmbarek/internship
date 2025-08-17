@@ -28,10 +28,13 @@ spec:
 
   environment {
     OCP_API_URL   = 'https://api.ocp4.smartek.ae:6443'
-    OCP_NAMESPACE = 'beta'
+    OCP_NAMESPACE = 'alpha'   // <-- corrected namespace
 
     FRONTEND_IMAGE = 'quay.io/ihebmbarek/jobportal-frontend:latest'
     BACKEND_IMAGE  = 'quay.io/ihebmbarek/jobportal-backend:latest'
+
+    FRONTEND_BUILD_FILE = 'Containerfile'
+    BACKEND_BUILD_FILE  = 'Containerfile'
   }
 
   stages {
@@ -86,9 +89,10 @@ spec:
                                                 usernameVariable: 'QUAY_USER',
                                                 passwordVariable: 'QUAY_PASS')]) {
                 sh '''
-                  buildah bud --isolation=chroot -t $FRONTEND_IMAGE -f source/frontend/Dockerfile source/frontend
+                  cd source/frontend
+                  buildah bud --isolation=chroot -t "$FRONTEND_IMAGE" -f "$FRONTEND_BUILD_FILE" .
                   buildah login -u "$QUAY_USER" -p "$QUAY_PASS" quay.io
-                  buildah push $FRONTEND_IMAGE
+                  buildah push "$FRONTEND_IMAGE"
                 '''
               }
             }
@@ -101,9 +105,10 @@ spec:
                                                 usernameVariable: 'QUAY_USER',
                                                 passwordVariable: 'QUAY_PASS')]) {
                 sh '''
-                  buildah bud --isolation=chroot -t $BACKEND_IMAGE -f source/backend/Dockerfile source/backend
+                  cd source/backend
+                  buildah bud --isolation=chroot -t "$BACKEND_IMAGE" -f "$BACKEND_BUILD_FILE" .
                   buildah login -u "$QUAY_USER" -p "$QUAY_PASS" quay.io
-                  buildah push $BACKEND_IMAGE
+                  buildah push "$BACKEND_IMAGE"
                 '''
               }
             }
@@ -121,15 +126,15 @@ spec:
               oc project "$OCP_NAMESPACE" || oc new-project "$OCP_NAMESPACE"
 
               if ! oc get deploy/backend-app >/dev/null 2>&1; then
-                oc new-app $BACKEND_IMAGE --name=backend-app
+                oc new-app "$BACKEND_IMAGE" --name=backend-app
               else
-                oc set image deploy/backend-app backend-app=$BACKEND_IMAGE
+                oc set image deploy/backend-app backend-app="$BACKEND_IMAGE"
               fi
 
               if ! oc get deploy/frontend-app >/dev/null 2>&1; then
-                oc new-app $FRONTEND_IMAGE --name=frontend-app
+                oc new-app "$FRONTEND_IMAGE" --name=frontend-app
               else
-                oc set image deploy/frontend-app frontend-app=$FRONTEND_IMAGE
+                oc set image deploy/frontend-app frontend-app="$FRONTEND_IMAGE"
               fi
             '''
           }
@@ -139,7 +144,7 @@ spec:
   }
 
   post {
-    success { echo ' Built & pushed to Quay, deployed to namespace "beta".' }
-    failure { echo ' Pipeline failed. Check logs.' }
+    success { echo ' Built & pushed to Quay' }
+    failure { echo 'Pipeline failed. Check logs.' }
   }
 }
