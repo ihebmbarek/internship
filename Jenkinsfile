@@ -1,80 +1,146 @@
 pipeline {
-    agent {
-        kubernetes {
-            yaml """
+  agent {
+    kubernetes {
+      yaml """
 apiVersion: v1
 kind: Pod
+metadata:
+  labels:
+    app: jenkins-nodejs
 spec:
   containers:
-    - name: buildah
-      image: quay.io/buildah/stable:v1.35.4
-      command:
-        - cat
-      tty: true
+  - name: nodejs
+    image: node:18-alpine
+    command: [ "cat" ]
+    tty: true
+  - name: buildah
+    image: quay.io/buildah/stable:latest
+    securityContext: { privileged: true }
+    command: [ "cat" ]
+    tty: true
+  - name: oc
+    image: quay.io/openshift/origin-cli:latest
+    command: [ "cat" ]
+    tty: true
 """
+    }
+  }
+
+  environment {
+    // Cluster/namespace
+    OCP_API_URL   = 'https://api.ocp4.smartek.ae:6443'
+    OCP_NAMESPACE = 'alpha'
+
+    // Your exact image names
+    FRONTEND_IMAGE = 'quay.io/ihebmbarek/jobportal-frontend:latest'
+    BACKEND_IMAGE  = 'quay.io/ihebmbarek/jobportal-backend:latest'
+  }
+
+  stages {
+    stage('Clone Repo') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'github-token',
+                                          usernameVariable: 'GH_USER',
+                                          passwordVariable: 'GH_TOKEN')]) {
+          sh '''
+            rm -rf source
+            git clone https://${GH_USER}:${GH_TOKEN}@github.com/ihebmbarek/internship.git source
+            cd source && git rev-parse --short HEAD
+          '''
         }
+      }
     }
 
-    environment {
-        PROJECT_NAME       = "beta"
-        OPENSHIFT_SERVER   = "https://api.ocp.smartek.ae:6443"
-        REGISTRY_CREDENTIALS = 'quay-credentials-iheb'   // <-- create this in Jenkins
-        FRONTEND_IMAGE     = "quay.io/ihebmbarek/jobportal-frontend:latest"
-        BACKEND_IMAGE      = "quay.io/ihebmbarek/jobportal-backend:latest"
-    }
-
-    stages {
-        stage('Clone Repo') {
-            steps {
-                checkout scm
+    stage('Lint, Install & Build') {
+      parallel {
+        stage('Frontend') {
+          steps {
+            container('nodejs') {
+              dir('source/frontend') {
+                sh '''
+                  npm run lint || true
+                  npm run build
+                '''
+              }
             }
+          }
         }
-
-        stage('Build & Push to Quay (Buildah)') {
-            parallel {
-                stage('Frontend') {
-                    steps {
-                        container('buildah') {
-                            withCredentials([usernamePassword(credentialsId: REGISTRY_CREDENTIALS,
-                                                              usernameVariable: 'QUAY_USER',
-                                                              passwordVariable: 'QUAY_PASS')]) {
-                                sh '''
-                                    buildah login -u "$QUAY_USER" -p "$QUAY_PASS" quay.io
-                                    cd frontend
-                                    buildah bud --storage-driver=vfs -t $FRONTEND_IMAGE .
-                                    buildah push --storage-driver=vfs $FRONTEND_IMAGE
-                                '''
-                            }
-                        }
-                    }
-                }
-
-                stage('Backend') {
-                    steps {
-                        container('buildah') {
-                            withCredentials([usernamePassword(credentialsId: REGISTRY_CREDENTIALS,
-                                                              usernameVariable: 'QUAY_USER',
-                                                              passwordVariable: 'QUAY_PASS')]) {
-                                sh '''
-                                    buildah login -u "$QUAY_USER" -p "$QUAY_PASS" quay.io
-                                    cd backend
-                                    buildah bud --storage-driver=vfs -t $BACKEND_IMAGE .
-                                    buildah push --storage-driver=vfs $BACKEND_IMAGE
-                                '''
-                            }
-                        }
-                    }
-                }
+        stage('Backend') {
+          steps {
+            container('nodejs') {
+              dir('source/backend') {
+                sh 'npm run lint || true'
+              }
             }
+          }
         }
+      }
     }
 
-    post {
-        success {
-            echo " Pipeline completed successfully! Images pushed to Quay (ihebmbarek)."
+    stage('Build and Push Images') {
+      parallel {
+        stage('Frontend') {
+          steps {
+            container('buildah') {
+              withCredentials([usernamePassword(credentialsId: 'quay-credentials-iheb',
+                                                usernameVariable: 'QUAY_USER',
+                                                passwordVariable: 'QUAY_PASS')]) {
+                sh '''
+                  buildah bud --isolation=chroot -t $FRONTEND_IMAGE -f source/frontend/Dockerfile source/frontend
+                  buildah login -u "$QUAY_USER" -p "$QUAY_PASS" quay.io
+                  buildah push $FRONTEND_IMAGE
+                '''
+              }
+            }
+          }
         }
-        failure {
-            echo " Pipeline failed! Please check the logs."
+        stage('Backend') {
+          steps {
+            container('buildah') {
+              withCredentials([usernamePassword(credentialsId: 'quay-credentials-iheb',
+                                                usernameVariable: 'QUAY_USER',
+                                                passwordVariable: 'QUAY_PASS')]) {
+                sh '''
+                  buildah bud --isolation=chroot -t $BACKEND_IMAGE -f source/backend/Dockerfile source/backend
+                  buildah login -u "$QUAY_USER" -p "$QUAY_PASS" quay.io
+                  buildah push $BACKEND_IMAGE
+                '''
+              }
+            }
+          }
         }
+      }
     }
+
+    stage('Deploy') {
+      steps {
+        container('oc') {
+          withCredentials([string(credentialsId: 'ocp-token', variable: 'OCP_TOKEN')]) {
+            sh '''
+              oc login --token="$OCP_TOKEN" --server="$OCP_API_URL" --insecure-skip-tls-verify
+              oc project "$OCP_NAMESPACE" || oc new-project "$OCP_NAMESPACE"
+
+              # Create or update deployments from your exact images
+              if ! oc get deploy/backend-app >/dev/null 2>&1; then
+                oc new-app $BACKEND_IMAGE --name=backend-app
+              else
+                oc set image deploy/backend-app backend-app=$BACKEND_IMAGE
+              fi
+
+              if ! oc get deploy/frontend-app >/dev/null 2>&1; then
+                oc new-app $FRONTEND_IMAGE --name=frontend-app
+              else
+                oc set image deploy/frontend-app frontend-app=$FRONTEND_IMAGE
+              fi
+            '''
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo '✅ Built & pushed to Quay, deployed to namespace "beta".' }
+    failure { echo '❌ Pipeline failed. Check logs.' }
+  }
 }
