@@ -28,7 +28,7 @@ spec:
 
   environment {
     OCP_API_URL   = 'https://api.ocp4.smartek.ae:6443'
-    OCP_NAMESPACE = 'alpha'   // <-- corrected namespace
+    OCP_NAMESPACE = 'alpha'  
 
     FRONTEND_IMAGE = 'quay.io/ihebmbarek/jobportal-frontend:latest'
     BACKEND_IMAGE  = 'quay.io/ihebmbarek/jobportal-backend:latest'
